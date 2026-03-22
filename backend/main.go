@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"golang.org/x/text/unicode/norm"
 	"log"
 	"net/http"
 	"time"
+	"unicode"
 )
 
 var (
@@ -17,18 +19,31 @@ var (
 	q    amqp.Queue
 )
 
-func failOnError(err error, msg string) {
-	if err != nil {
-		log.Panicf("%s: %s", msg, err)
-	}
-}
-
 type telemetria struct {
 	ID          string  `json:"id"`
 	Timestamp   string  `json:"timestamp"`
 	TipoSensor  string  `json:"tipo-sensor"`
 	TipoLeitura string  `json:"tipo-leitura"`
 	Valor       float64 `json:"valor"`
+}
+
+func failOnError(err error, msg string) {
+	if err != nil {
+		log.Panicf("%s: %s", msg, err)
+	}
+}
+
+func removerAcentos(s string) string {
+	t := norm.NFD.String(s) // decompõe caracteres (ex: é → e + ´)
+
+	result := make([]rune, 0, len(t))
+	for _, r := range t {
+		if unicode.Is(unicode.Mn, r) {
+			continue // remove acentos (marks)
+		}
+		result = append(result, r)
+	}
+	return string(result)
 }
 
 func addInQueue(c *gin.Context) {
@@ -42,10 +57,15 @@ func addInQueue(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	dados.TipoSensor = removerAcentos(dados.TipoSensor)
+
 	body, err := json.Marshal(dados)
 
-	failOnError(err, "Fail in Marshalling")
-	log.Printf(" [x] Sent %s\n", body)
+	if err != nil {
+		log.Println("Erro ao marshalling:", err)
+		c.JSON(http.StatusInternalServerError, "erro ao enviar mensagem")
+		return
+	}
 
 	err = ch.PublishWithContext(ctx,
 		"",     // exchange
@@ -57,8 +77,11 @@ func addInQueue(c *gin.Context) {
 			Body:        []byte(body),
 		})
 
-	failOnError(err, "Failed to publish a message")
-	log.Printf(" [x] Sent %s\n", body)
+	if err != nil {
+		log.Println("Erro ao publicar:", err)
+		c.JSON(http.StatusInternalServerError, "erro ao enviar mensagem")
+		return
+	}
 
 	message := fmt.Sprintf("Sua requisição %s será processada em breve", dados.ID)
 
@@ -69,7 +92,7 @@ func main() {
 	router := gin.Default()
 	var err error
 
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()
 
