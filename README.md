@@ -76,7 +76,7 @@ Content-Type: application/json
 
 ## Como rodar a aplicação
 
-1. Com o Docker instalado, adicione o [arquivo env](https://docs.google.com/document/d/1uy-Nk4R9tcWJ7scq-VepKUjac-iNcSdsjafSP_k42js/edit?usp=sharing) em middleware.
+1. Com o Docker instalado, adicione o [arquivo env](https://docs.google.com/document/d/1uy-Nk4R9tcWJ7scq-VepKUjac-iNcSdsjafSP_k42js/edit?usp=sharing) na past middleware.
 
 2. Vá até o terminal e rode:
 
