@@ -3,11 +3,13 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	_ "github.com/lib/pq"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
 	dbConfig "middleware/db_config"
+	"time"
 )
 
 var db *sql.DB
@@ -25,6 +27,11 @@ func failOnError(err error, msg string) {
 	}
 }
 
+func isValidTimestamp(value string) bool {
+	_, err := time.Parse(time.RFC3339, value)
+	return err == nil
+}
+
 type telemetria struct {
 	ID          string  `json:"id"`
 	Timestamp   string  `json:"timestamp"`
@@ -33,16 +40,41 @@ type telemetria struct {
 	Valor       float64 `json:"valor"`
 }
 
+func verificaCampos(dados telemetria) (telemetria, error) {
+	if dados.ID == "" ||
+		dados.Timestamp == "" ||
+		dados.TipoSensor == "" ||
+		dados.TipoLeitura == "" ||
+		dados.Valor == 0 {
+		return dados, errors.New("todos os campos devem ser preenchidos")
+	}
+
+	if dados.TipoLeitura != "analogico" && dados.TipoLeitura != "discreto" {
+		return dados, errors.New("o tipo de sensor deve ser analogico ou discreto")
+	}
+
+	if !isValidTimestamp(dados.Timestamp) {
+		return dados, errors.New("A data enviada não está formatada corretamente")
+	}
+
+	return dados, nil
+}
+
 func sqlInsert(data telemetria) {
 
 	sqlStatement := fmt.Sprintf(`INSERT INTO %s (id_sensor, hora_leitura, tipo_sensor, tipo_leitura, valor) VALUES ($1, $2, $3, $4, $5)`, cfg.TableName)
 	insert, err := db.Prepare(sqlStatement)
 	checkErr(err)
 
-	_, err = insert.Exec(data.ID, data.Timestamp, data.TipoLeitura, data.TipoSensor, data.Valor)
+	dados_verificados, err := verificaCampos(data)
 	checkErr(err)
 
-	fmt.Println("adicionado!")
+	if err == nil {
+		_, err = insert.Exec(dados_verificados.ID, dados_verificados.Timestamp, dados_verificados.TipoLeitura, dados_verificados.TipoSensor, dados_verificados.Valor)
+		checkErr(err)
+		fmt.Println("Adicionado!")
+	}
+
 }
 
 func main() {
@@ -54,17 +86,17 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	} else {
-		fmt.Println("Connected!")
+		fmt.Println("Conectado!")
 	}
 
 	defer db.Close()
 
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
-	failOnError(err, "Failed to connect to RabbitMQ")
+	failOnError(err, "Falha em conectar com o  RabbitMQ")
 	defer conn.Close()
 
 	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
+	failOnError(err, "Falha em abrir o canal")
 	defer ch.Close()
 
 	q, err := ch.QueueDeclare(
@@ -77,7 +109,7 @@ func main() {
 			amqp.QueueTypeArg: amqp.QueueTypeQuorum,
 		},
 	)
-	failOnError(err, "Failed to declare a queue")
+	failOnError(err, "Falha em declarar a fila")
 
 	msgs, err := ch.Consume(
 		q.Name, // queue
@@ -88,18 +120,17 @@ func main() {
 		false,  // no-wait
 		nil,    // args
 	)
-	failOnError(err, "Failed to register a consumer")
+	failOnError(err, "Falha em registrar o consumer")
 
 	var forever chan struct{}
 
 	go func() {
 		for d := range msgs {
-			log.Printf("Received a message: %s", d.Body)
 			err = json.Unmarshal(d.Body, &dados)
 			sqlInsert(dados)
 		}
 	}()
 
-	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	log.Printf(" [*] Aguardando mensagens.")
 	<-forever
 }

@@ -6,6 +6,11 @@ services:
       - "5672:5672"    # comunicação
       - "15672:15672"  # dashboard web
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
   backend:
     build: ./backend/.
@@ -17,6 +22,12 @@ services:
     environment:
       - RABBITMQ_HOST=rabbitmq
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+
 
   middleware:
     build: ./middleware/.
@@ -28,3 +39,8 @@ services:
     environment:
       - RABBITMQ_HOST=rabbitmq
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M

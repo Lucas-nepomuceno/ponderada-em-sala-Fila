@@ -2,20 +2,20 @@ import http from 'k6/http';
 import { sleep } from 'k6';
 
 export const options = {
-  vus: 20,
-  duration: '30s',
+  vus: 10000,
+  duration: '20s',
 };
 
 function gerarSensor() {
   const sensores = ["Potenciométrico", "Termistor", "Ultrassônico", "LDR", "Infravermelho", "Temperatura", "Pressão", "Umidade", "Movimento"];
-  const leituras = ["analogico", "digital"];
+  const leituras = ["analogico", "discreto"];
 
   const sensor = sensores[Math.floor(Math.random() * sensores.length)];
   const leitura = leituras[Math.floor(Math.random() * leituras.length)];
 
   return {
     id: Math.floor(Math.random() * 1000000).toString(),
-    timestamp: new Date().toISOString().split("T")[0],
+    timestamp: new Date().toISOString(),
     "tipo-sensor": sensor,
     "tipo-leitura": leitura,
     valor: leitura === "digital"
